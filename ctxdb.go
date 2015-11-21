@@ -64,10 +64,27 @@ func (db *DB) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (db *DB) get(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
+func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	done := make(chan struct{}, 1)
+
+	var res sql.Result
+	var err error
+
+	f := func(sqldb *sql.DB) {
+		res, err = sqldb.Exec(query, args)
+		close(done)
+	}
+
+	if err := db.process(ctx, f, done); err != nil {
+		return nil, err
+	}
+
+	return res, err
+}
+
+func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
 	select {
 	case <-db.sem:
-
 		// do not forget to put back
 		defer func() {
 			db.sem <- struct{}{}
