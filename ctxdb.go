@@ -3,7 +3,6 @@ package ctxdb
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -99,43 +98,51 @@ func (db *DB) conn() (func(), error) {
 }
 
 func (db *DB) Ping(ctx context.Context) error {
-	sqldb, err := db.get(ctx)
-	if err != nil {
+	done := make(chan struct{}, 1)
+	var err error
+
+	f := func(sqldb *sql.DB) {
+		err = sqldb.Ping()
+		close(done)
+	}
+
+	if err := db.get(ctx, f, done); err != nil {
 		return err
 	}
 
-	// defer release()
-	return sqldb.Ping()
+	return nil
 }
 
-func (db *DB) get(ctx context.Context) (*sql.DB, error) {
-
-	sqldb, err := db.getFromPool()
-	if err != nil {
-		return nil, err
-	}
-
-	// Request cancelation changed in Go 1.5, see cancelreq.go and cancelreq_go14.go.
-	cancel := func() {
-		err := sqldb.Close()
-		fmt.Println("err.Error()-->", err.Error())
-	}
-
-	type responseAndError struct {
-		err error
-	}
-	result := make(chan responseAndError, 1)
-
-	go func() {
-		// resp, err := client.Do(req)
-		result <- responseAndError{}
-	}()
-
+func (db *DB) get(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
 	select {
+	case <-db.sem:
+
+		// do not forget to put back
+		defer func() {
+			db.sem <- struct{}{}
+		}()
+
+		// we aquired one connection sem, continue with that
+		sqldb, err := db.getFromPool()
+		if err != nil {
+			return err
+		}
+
+		f(sqldb)
+
+		select {
+		case <-ctx.Done():
+			if err := sqldb.Close(); err != nil {
+				return err
+			}
+
+			return ctx.Err()
+		case <-done:
+			return db.put(sqldb)
+		}
+
 	case <-ctx.Done():
-		cancel()
-		return nil, ctx.Err()
-	case r := <-result:
-		return nil, r.err
+		// we could not get a connection sem in normal time
+		return ctx.Err()
 	}
 }

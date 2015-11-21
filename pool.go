@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	ErrClosed  = errors.New("connection is closed")
-	ErrNilConn = errors.New("connection is nil. rejecting")
+	ErrClosed              = errors.New("connection is closed")
+	ErrNilConn             = errors.New("connection is nil. rejecting")
+	ErrMaxConnLimitReached = errors.New("connection limit reached")
 )
 
 // func (db *DB) SetMaxIdleConns(i int) {
@@ -62,8 +63,8 @@ func (db *DB) put(conn *sql.DB) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	// pool is closed, close passed connection
 	if db.conns == nil {
+		// pool is closed, close passed connection
 		return conn.Close()
 	}
 
