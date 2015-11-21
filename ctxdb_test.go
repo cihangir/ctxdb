@@ -37,7 +37,7 @@ func TestGet(t *testing.T) {
 	)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
-	if err := p.get(ctx, f, done); err != nil && err.Error() != "context deadline exceeded" {
+	if err := p.get(ctx, f, done); err != context.DeadlineExceeded {
 		t.Errorf("Expected deadline exceeded, got: %# v", err)
 	}
 }
