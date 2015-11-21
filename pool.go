@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+var (
+	ErrClosed  = errors.New("connection is closed")
+	ErrNilConn = errors.New("connection is nil. rejecting")
+)
+
 // func (db *DB) SetMaxIdleConns(i int) {
 // 	db.mu.Lock()
 // 	db.maxIdleConns = i
@@ -25,16 +30,14 @@ func (db *DB) SetUsageTimeout(timeout time.Duration) {
 }
 
 func (db *DB) getConns() chan *sql.DB {
-	c.mu.Lock()
-	conns := c.conns
-	c.mu.Unlock()
+	db.mu.Lock()
+	conns := db.conns
+	db.mu.Unlock()
 	return conns
 }
 
-var ErrClosed = errors.New("connection is closed")
-
 func (db *DB) getFromPool() (*sql.DB, error) {
-	conns := c.getConns()
+	conns := db.getConns()
 	if conns == nil {
 		return nil, ErrClosed
 	}
@@ -53,19 +56,19 @@ func (db *DB) getFromPool() (*sql.DB, error) {
 
 func (db *DB) put(conn *sql.DB) error {
 	if conn == nil {
-		return errors.New("connection is nil. rejecting")
+		return ErrNilConn
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	db.mu.Lock()
+	defer db.mu.Unlock()
 
 	// pool is closed, close passed connection
-	if c.conns == nil {
+	if db.conns == nil {
 		return conn.Close()
 	}
 
 	select {
-	case c.conns <- conn:
+	case db.conns <- conn:
 		return nil
 	default:
 		// pool is full, close passed connection
@@ -73,19 +76,29 @@ func (db *DB) put(conn *sql.DB) error {
 	}
 }
 
-func (db *DB) Close() {
-	c.mu.Lock()
-	conns := c.conns
-	c.conns = nil
-	c.factory = nil
-	c.mu.Unlock()
+// Close closes the all connections
+func (db *DB) Close() error {
+	db.mu.Lock()
+	conns := db.conns
+	db.conns = nil
+	db.factory = nil
+	db.mu.Unlock()
 
 	if conns == nil {
-		return
+		return ErrClosed
 	}
 
 	close(conns)
+
 	for conn := range conns {
-		conn.Close()
+		if conn == nil {
+			continue
+		}
+
+		if err := conn.Close(); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
