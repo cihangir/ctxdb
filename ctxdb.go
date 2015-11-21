@@ -128,7 +128,7 @@ func (db *DB) get(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}
 			return err
 		}
 
-		f(sqldb)
+		go f(sqldb)
 
 		select {
 		case <-ctx.Done():
