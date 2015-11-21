@@ -18,8 +18,9 @@ type DB struct {
 	sem          chan struct{}
 	usageTimeout time.Duration
 
-	mu    sync.Mutex
-	conns chan *sql.DB
+	usageTimeoutMux sync.RWMutex
+	mu              sync.Mutex
+	conns           chan *sql.DB
 
 	factory Factory // sql.DB generator
 }
@@ -29,19 +30,19 @@ type Factory func() (*sql.DB, error)
 func Open(driver, dsn string) (*DB, error) {
 	// We wrap *sql.DB into our DB
 	db := &DB{
-		maxIdleConns: maxOpenConns,
+		maxOpenConns: maxOpenConns,
 		sem:          make(chan struct{}, maxOpenConns),
 
 		conns: make(chan *sql.DB, maxOpenConns),
 		// usageTimeout: time.Second * 30,
-		factory: func() {
+		factory: func() (*sql.DB, error) {
 			d, err := sql.Open(driver, dsn)
 			if err != nil {
 				return nil, err
 			}
 
-			db.SetMaxIdleConns(1)
-			db.SetMaxOpenConns(1)
+			d.SetMaxIdleConns(1)
+			d.SetMaxOpenConns(1)
 			return d, nil
 		},
 	}
@@ -73,7 +74,7 @@ func (db *DB) conn() (func(), error) {
 	}
 
 	releaseLock = func() {
-		db.sem <- true
+		db.sem <- struct{}{}
 	}
 
 	cancelUsageTimeout := func() {}
@@ -94,16 +95,16 @@ func (db *DB) conn() (func(), error) {
 	return func() {
 		releaseLock()
 		cancelUsageTimeout()
-	}
+	}, nil
 }
 
 func (db *DB) Ping(ctx context.Context) error {
-	release, sqldb, err := db.get(ctx)
+	sqldb, err := db.get(ctx)
 	if err != nil {
 		return err
 	}
 
-	defer release()
+	// defer release()
 	return sqldb.Ping()
 }
 
@@ -126,8 +127,8 @@ func (db *DB) get(ctx context.Context) (*sql.DB, error) {
 	result := make(chan responseAndError, 1)
 
 	go func() {
-		resp, err := client.Do(req)
-		result <- responseAndError{resp, err}
+		// resp, err := client.Do(req)
+		result <- responseAndError{}
 	}()
 
 	select {
@@ -135,6 +136,6 @@ func (db *DB) get(ctx context.Context) (*sql.DB, error) {
 		cancel()
 		return nil, ctx.Err()
 	case r := <-result:
-		return r.resp, r.err
+		return nil, r.err
 	}
 }
