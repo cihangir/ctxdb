@@ -3,7 +3,6 @@ package ctxdb
 import (
 	"database/sql"
 	"errors"
-	"time"
 )
 
 var (
@@ -21,12 +20,6 @@ var (
 func (db *DB) SetMaxOpenConns(i int) {
 	db.mu.Lock()
 	db.maxOpenConns = i
-	db.mu.Unlock()
-}
-
-func (db *DB) SetUsageTimeout(timeout time.Duration) {
-	db.mu.Lock()
-	db.usageTimeout = timeout
 	db.mu.Unlock()
 }
 

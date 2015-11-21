@@ -2,9 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
-	"errors"
 	"sync"
-	"time"
 
 	"golang.org/x/net/context"
 )
@@ -15,11 +13,9 @@ type DB struct {
 	// maxIdleConns int
 	maxOpenConns int
 	sem          chan struct{}
-	usageTimeout time.Duration
 
-	usageTimeoutMux sync.RWMutex
-	mu              sync.Mutex
-	conns           chan *sql.DB
+	mu    sync.Mutex
+	conns chan *sql.DB
 
 	factory Factory // sql.DB generator
 }
@@ -33,7 +29,6 @@ func Open(driver, dsn string) (*DB, error) {
 		sem:          make(chan struct{}, maxOpenConns),
 
 		conns: make(chan *sql.DB, maxOpenConns),
-		// usageTimeout: time.Second * 30,
 		factory: func() (*sql.DB, error) {
 			d, err := sql.Open(driver, dsn)
 			if err != nil {
@@ -53,50 +48,6 @@ func Open(driver, dsn string) (*DB, error) {
 	return db, nil
 }
 
-var ErrTimedOut = errors.New("timed out")
-
-func (db *DB) conn() (func(), error) {
-	releaseLock := func() {}
-
-	db.usageTimeoutMux.RLock()
-	usageTimeout := db.usageTimeout
-	db.usageTimeoutMux.RUnlock()
-
-	timeOutCh := time.After(usageTimeout)
-
-	select {
-	case <-db.sem:
-		// we aquired one connection, continue with that
-	case <-timeOutCh:
-		return nil, ErrTimedOut
-		// we could not get a connection
-	}
-
-	releaseLock = func() {
-		db.sem <- struct{}{}
-	}
-
-	cancelUsageTimeout := func() {}
-
-	cancelTimeoutCh := make(chan struct{}, 1)
-	cancelUsageTimeout = func() {
-		cancelTimeoutCh <- struct{}{}
-		close(cancelTimeoutCh)
-	}
-
-	go func() {
-		select {
-		case <-timeOutCh:
-		case <-cancelTimeoutCh:
-		}
-	}()
-
-	return func() {
-		releaseLock()
-		cancelUsageTimeout()
-	}, nil
-}
-
 func (db *DB) Ping(ctx context.Context) error {
 	done := make(chan struct{}, 1)
 	var err error
@@ -106,7 +57,7 @@ func (db *DB) Ping(ctx context.Context) error {
 		close(done)
 	}
 
-	if err := db.get(ctx, f, done); err != nil {
+	if err := db.process(ctx, f, done); err != nil {
 		return err
 	}
 

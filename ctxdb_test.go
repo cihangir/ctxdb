@@ -22,7 +22,7 @@ func TestPing(t *testing.T) {
 	}
 }
 
-func TestGet(t *testing.T) {
+func TestProcess(t *testing.T) {
 	p := getConn(t)
 
 	done := make(chan struct{}, 1)
@@ -37,7 +37,7 @@ func TestGet(t *testing.T) {
 	)
 	defer cancel() // releases resources if slowOperation completes before timeout elapses
 
-	if err := p.get(ctx, f, done); err != context.DeadlineExceeded {
+	if err := p.process(ctx, f, done); err != context.DeadlineExceeded {
 		t.Errorf("Expected deadline exceeded, got: %# v", err)
 	}
 }
