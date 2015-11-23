@@ -71,7 +71,7 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 	var err error
 
 	f := func(sqldb *sql.DB) {
-		res, err = sqldb.Exec(query, args)
+		res, err = sqldb.Exec(query, args...)
 		close(done)
 	}
 

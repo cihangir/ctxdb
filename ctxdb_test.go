@@ -41,3 +41,28 @@ func TestProcess(t *testing.T) {
 		t.Errorf("Expected deadline exceeded, got: %# v", err)
 	}
 }
+
+func TestExec(t *testing.T) {
+	sql := `CREATE TABLE nullable (
+    string_n_val VARCHAR (255) DEFAULT NULL,
+    string_val VARCHAR (255) DEFAULT 'empty',
+    int64_n_val BIGINT DEFAULT NULL,
+    int64_val BIGINT DEFAULT 1,
+    float64_n_val NUMERIC DEFAULT NULL,
+    float64_val NUMERIC DEFAULT 1,
+    bool_n_val BOOLEAN,
+    bool_val BOOLEAN NOT NULL,
+    time_n_val timestamp,
+    time_val timestamp NOT NULL
+)`
+
+	db := getConn(t)
+	res, err := db.Exec(context.Background(), sql)
+	if err != nil {
+		t.Fatalf("err while creating table: %s", err.Error())
+	}
+
+	if res == nil {
+		t.Fatalf("res should not be nil")
+	}
+}
