@@ -82,6 +82,54 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 	return res, err
 }
 
+func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *Row {
+
+	select {
+	case <-db.sem:
+
+		done := make(chan struct{}, 0)
+
+		var res *sql.Row
+
+		// we aquired one connection sem, continue with that
+		sqldb, err := db.getFromPool()
+		if err != nil {
+			return &Row{err: err}
+		}
+
+		go func() {
+			res = sqldb.QueryRow(query, args...)
+			close(done)
+		}()
+
+		select {
+		case <-ctx.Done():
+			r := &Row{
+				row:   res,
+				err:   ctx.Err(),
+				sqldb: sqldb,
+				db:    db,
+			}
+
+			if err := sqldb.Close(); err != nil {
+				r.err = err
+			}
+
+			return r
+		case <-done:
+			return &Row{
+				row:   res,
+				sqldb: sqldb,
+				db:    db,
+			}
+		}
+
+	case <-ctx.Done():
+		// we could not get a connection sem in normal time
+		return &Row{err: ctx.Err()}
+	}
+}
+
 func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
 	select {
 	case <-db.sem:
