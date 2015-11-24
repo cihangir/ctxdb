@@ -126,7 +126,7 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 
 	case <-ctx.Done():
 		// we could not get a connection sem in normal time
-		return &Row{err: ctx.Err()}
+		return &Row{err: ctx.Err(), db: db}
 	}
 }
 

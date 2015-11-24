@@ -61,7 +61,7 @@ type nullable struct {
 }
 
 func TestExec(t *testing.T) {
-	sql := `CREATE TABLE nullable (
+	sqlStatement := `CREATE TABLE nullable (
     string_n_val VARCHAR (255) DEFAULT NULL,
     string_val VARCHAR (255) DEFAULT 'empty',
     int64_n_val BIGINT DEFAULT NULL,
@@ -76,7 +76,7 @@ func TestExec(t *testing.T) {
 
 	db := getConn(t)
 	ctx := context.Background()
-	res, err := db.Exec(ctx, sql)
+	res, err := db.Exec(ctx, sqlStatement)
 	if err != nil {
 		t.Fatalf("err while creating table: %s", err.Error())
 	}
@@ -85,7 +85,7 @@ func TestExec(t *testing.T) {
 		t.Fatalf("res should not be nil")
 	}
 
-	sql = `INSERT INTO nullable
+	sqlStatement = `INSERT INTO nullable
 VALUES
     (
         NULL,
@@ -100,7 +100,7 @@ VALUES
         NOW()
     )`
 
-	if _, err := db.Exec(ctx, sql, 42, nil, 12); err != nil {
+	if _, err := db.Exec(ctx, sqlStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
@@ -163,6 +163,25 @@ VALUES
 
 	if _, err := db.Exec(ctx, "DELETE FROM nullable"); err != nil {
 		t.Fatalf("err while clearing nullable table: %s", err.Error())
+	}
+
+	// ctx, _ = context.WithTimeout(ctx, time.Nanosecond)
+	// defer cancel()
+	n = &nullable{}
+	err = db.QueryRow(ctx, "SELECT * FROM nullable").
+		Scan(ctx, &n.StringNVal,
+		&n.StringVal,
+		&n.Int64NVal,
+		&n.Int64Val,
+		&n.Float64NVal,
+		&n.Float64Val,
+		&n.BoolNVal,
+		&n.BoolVal,
+		&n.TimeNVal,
+		&n.TimeVal,
+	)
+	if err != sql.ErrNoRows {
+		t.Fatalf("expecting ErrNoRows")
 	}
 
 }

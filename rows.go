@@ -29,10 +29,18 @@ func (r *Row) Scan(ctx context.Context, dest ...interface{}) error {
 		close(done)
 	}()
 
+	// do not forget to put back
+	defer func() {
+		r.db.sem <- struct{}{}
+	}()
+
 	select {
 	case <-ctx.Done():
-		if err := r.sqldb.Close(); err != nil {
-			return err
+		// can be nil when we have timeout on db connection obtaining
+		if r.sqldb != nil {
+			if err := r.sqldb.Close(); err != nil {
+				return err
+			}
 		}
 
 		return ctx.Err()
