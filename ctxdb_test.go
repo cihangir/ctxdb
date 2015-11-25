@@ -2,6 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -61,51 +62,78 @@ type nullable struct {
 }
 
 func TestExec(t *testing.T) {
-	sqlStatement := `CREATE TABLE nullable (
-    string_n_val VARCHAR (255) DEFAULT NULL,
-    string_val VARCHAR (255) DEFAULT 'empty',
-    int64_n_val BIGINT DEFAULT NULL,
-    int64_val BIGINT DEFAULT 1,
-    float64_n_val NUMERIC DEFAULT NULL,
-    float64_val NUMERIC DEFAULT 1,
-    bool_n_val BOOLEAN,
-    bool_val BOOLEAN NOT NULL,
-    time_n_val timestamp,
-    time_val timestamp NOT NULL
-)`
-
 	db := getConn(t)
+	ensureNullableTable(t, db) // uses Exec internally
+}
+
+func ensureNullableTable(t *testing.T, db *DB) {
+
 	ctx := context.Background()
-	res, err := db.Exec(ctx, sqlStatement)
+	res, err := db.Exec(ctx, createTableSqlStatement)
 	if err != nil {
-		t.Fatalf("err while creating table: %s", err.Error())
+		t.Fatalf("Error while ensuring the nullable table %+v", err)
 	}
 
 	if res == nil {
 		t.Fatalf("res should not be nil")
 	}
 
-	sqlStatement = `INSERT INTO nullable
-VALUES
-    (
-        NULL,
-        'NULLABLE',
-        NULL,
-        $1,
-        $2,
-        $3,
-        NULL,
-        true,
-        NULL,
-        NOW()
-    )`
+}
+func TestExecWithTimeout(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db) // uses Exec internally
 
-	if _, err := db.Exec(ctx, sqlStatement, 42, nil, 12); err != nil {
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, time.Nanosecond*10)
+	defer cancel()
+
+	_, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12)
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	}
+
+	sqlStatement := `SELECT * FROM nullable WHERE
+    int64_val = $1 AND
+    float64_n_val = $2 AND
+    float64_val = $3
+    `
+
+	ctx = context.Background() // reset
+
+	n := &nullable{}
+	err = db.QueryRow(ctx, sqlStatement, 42, nil, 12).
+		Scan(ctx, &n.StringNVal,
+		&n.StringVal,
+		&n.Int64NVal,
+		&n.Int64Val,
+		&n.Float64NVal,
+		&n.Float64Val,
+		&n.BoolNVal,
+		&n.BoolVal,
+		&n.TimeNVal,
+		&n.TimeVal,
+	)
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows, got %s", err)
+	}
+
+	// f, err := res.RowsAffected()
+	//    if f ==
+	// fmt.Println("f-->", f)
+	// fmt.Println("err-->", err)
+}
+
+func TestQueryRow(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db)
+	ctx := context.Background()
+
+	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
 	n := &nullable{}
-	err = db.QueryRow(ctx, "SELECT * FROM nullable").
+	err := db.QueryRow(ctx, "SELECT * FROM nullable").
 		Scan(ctx, &n.StringNVal,
 		&n.StringVal,
 		&n.Int64NVal,
@@ -165,10 +193,25 @@ VALUES
 		t.Fatalf("err while clearing nullable table: %s", err.Error())
 	}
 
-	// ctx, _ = context.WithTimeout(ctx, time.Nanosecond)
-	// defer cancel()
-	n = &nullable{}
-	err = db.QueryRow(ctx, "SELECT * FROM nullable").
+	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+		t.Fatalf("err while cleaning the database: %s", err.Error())
+	}
+}
+
+func TestQueryRowWithTimeout(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db)
+	ctx := context.Background()
+
+	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+		t.Fatalf("err while adding null item: %s", err.Error())
+	}
+
+	timedoutCtx, cancel := context.WithTimeout(ctx, time.Nanosecond*10)
+	defer cancel()
+
+	n := &nullable{}
+	err := db.QueryRow(timedoutCtx, "SELECT * FROM nullable").
 		Scan(ctx, &n.StringNVal,
 		&n.StringVal,
 		&n.Int64NVal,
@@ -180,8 +223,32 @@ VALUES
 		&n.TimeNVal,
 		&n.TimeVal,
 	)
-	if err != sql.ErrNoRows {
-		t.Fatalf("expecting ErrNoRows")
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
+	fmt.Println("098-->", 98)
+
+	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+		t.Fatalf("err while cleaning the database: %s", err.Error())
+	}
 }
+
+var (
+	insertSqlStatement = `INSERT INTO nullable
+VALUES ( NULL, 'NULLABLE', NULL, $1, $2, $3, NULL, true, NULL, NOW() )`
+
+	createTableSqlStatement = `CREATE TABLE IF NOT EXISTS nullable (
+    string_n_val VARCHAR (255) DEFAULT NULL,
+    string_val VARCHAR (255) DEFAULT 'empty',
+    int64_n_val BIGINT DEFAULT NULL,
+    int64_val BIGINT DEFAULT 1,
+    float64_n_val NUMERIC DEFAULT NULL,
+    float64_val NUMERIC DEFAULT 1,
+    bool_n_val BOOLEAN,
+    bool_val BOOLEAN NOT NULL,
+    time_n_val timestamp,
+    time_val timestamp NOT NULL
+)`
+	deleteSqlStatement = `DELETE FROM nullable`
+)

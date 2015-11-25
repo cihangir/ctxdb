@@ -2,6 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
+	"fmt"
 	"sync"
 
 	"golang.org/x/net/context"
@@ -82,12 +83,22 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 	return res, err
 }
 
-func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *Row {
+func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (r *Row) {
 
 	select {
 	case <-db.sem:
 
-		done := make(chan struct{}, 0)
+		// do not forget to put back
+		defer func() {
+			// db is not inuse anymore
+			if r.err != nil {
+				select {
+				case r.db.sem <- struct{}{}:
+				default:
+					fmt.Println("overflow 2-->")
+				}
+			}
+		}()
 
 		var res *sql.Row
 
@@ -97,6 +108,8 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 			return &Row{err: err}
 		}
 
+		done := make(chan struct{}, 0)
+
 		go func() {
 			res = sqldb.QueryRow(query, args...)
 			close(done)
@@ -104,7 +117,8 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 
 		select {
 		case <-ctx.Done():
-			r := &Row{
+
+			r = &Row{
 				row:   res,
 				err:   ctx.Err(),
 				sqldb: sqldb,
@@ -117,11 +131,12 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 
 			return r
 		case <-done:
-			return &Row{
+			r = &Row{
 				row:   res,
 				sqldb: sqldb,
 				db:    db,
 			}
+			return r
 		}
 
 	case <-ctx.Done():
@@ -133,9 +148,13 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
 	select {
 	case <-db.sem:
-		// do not forget to put back
+		// do not forget to put back connection
 		defer func() {
-			db.sem <- struct{}{}
+			select {
+			case db.sem <- struct{}{}:
+			default:
+				fmt.Println("overflow 3-->")
+			}
 		}()
 
 		// we aquired one connection sem, continue with that
@@ -154,11 +173,13 @@ func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan stru
 
 			return ctx.Err()
 		case <-done:
-			return db.put(sqldb)
+			err := db.put(sqldb)
+			return err
 		}
 
 	case <-ctx.Done():
 		// we could not get a connection sem in normal time
-		return ctx.Err()
+		err := ctx.Err()
+		return err
 	}
 }

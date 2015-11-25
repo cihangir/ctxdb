@@ -2,6 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
+	"fmt"
 
 	"golang.org/x/net/context"
 )
@@ -20,37 +21,61 @@ type Rows struct {
 	err   error
 }
 
-func (r *Row) Scan(ctx context.Context, dest ...interface{}) error {
-	done := make(chan struct{}, 1)
+func (r *Row) Scan(ctx context.Context, dest ...interface{}) (err error) {
+	// we can safely return here since db connections are handled on previous step
+	if r.err != nil {
+		return r.err
+	}
 
-	var err error
-	go func() {
-		err = r.row.Scan(dest...)
-		close(done)
+	// internal validations
+	if r.row == nil {
+		panic("no row")
+	}
+
+	if r.db == nil {
+		panic("no db")
+	}
+
+	if r.sqldb == nil {
+		panic("no sqldb")
+	}
+
+	// do not forget to put back connection
+	defer func() {
+		select {
+		case r.db.sem <- struct{}{}:
+		default:
+			fmt.Println("overflow 1-->")
+		}
 	}()
 
-	// do not forget to put back
-	defer func() {
-		r.db.sem <- struct{}{}
+	done := make(chan struct{}, 1)
+
+	go func() {
+		r.err = r.row.Scan(dest...)
+		close(done)
 	}()
 
 	select {
 	case <-ctx.Done():
 		// can be nil when we have timeout on db connection obtaining
-		if r.sqldb != nil {
-			if err := r.sqldb.Close(); err != nil {
-				return err
-			}
-		}
-
-		return ctx.Err()
-
-	case <-done:
-		if err := r.db.put(r.sqldb); err != nil {
+		err = r.sqldb.Close()
+		if err != nil {
 			return err
 		}
+
+		err = ctx.Err()
+		return err
+	case <-done:
+		err = r.db.put(r.sqldb)
+		if err != nil {
+			return err
+		}
+
+		err = r.err
 		return err
 	}
+
 }
 
 func (rs *Rows) Close(ctx context.Context) error {
