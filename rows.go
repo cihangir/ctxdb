@@ -2,7 +2,6 @@ package ctxdb
 
 import (
 	"database/sql"
-	"fmt"
 
 	"golang.org/x/net/context"
 )
@@ -45,7 +44,7 @@ func (r *Row) Scan(ctx context.Context, dest ...interface{}) (err error) {
 		select {
 		case r.db.sem <- struct{}{}:
 		default:
-			fmt.Println("overflow 1-->")
+			panic("overflow 1-->")
 		}
 	}()
 

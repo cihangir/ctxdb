@@ -2,7 +2,6 @@ package ctxdb
 
 import (
 	"database/sql"
-	"fmt"
 	"sync"
 
 	"golang.org/x/net/context"
@@ -83,6 +82,9 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 	return res, err
 }
 
+// prehook is used for testing purposes
+var prehook = func() {}
+
 func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (r *Row) {
 
 	select {
@@ -95,7 +97,7 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (
 				select {
 				case r.db.sem <- struct{}{}:
 				default:
-					fmt.Println("overflow 2-->")
+					panic("overflow 2-->")
 				}
 			}
 		}()
@@ -111,6 +113,7 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (
 		done := make(chan struct{}, 0)
 
 		go func() {
+			prehook()
 			res = sqldb.QueryRow(query, args...)
 			close(done)
 		}()
@@ -153,7 +156,7 @@ func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan stru
 			select {
 			case db.sem <- struct{}{}:
 			default:
-				fmt.Println("overflow 3-->")
+				panic("overflow 3-->")
 			}
 		}()
 
