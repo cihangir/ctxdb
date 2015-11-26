@@ -2,7 +2,6 @@ package ctxdb
 
 import (
 	"database/sql"
-	"fmt"
 	"testing"
 	"time"
 
@@ -207,7 +206,7 @@ func TestQueryRowWithTimeout(t *testing.T) {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
-	timedoutCtx, cancel := context.WithTimeout(ctx, time.Nanosecond*10)
+	timedoutCtx, cancel := context.WithTimeout(ctx, time.Nanosecond)
 	defer cancel()
 
 	n := &nullable{}
@@ -227,7 +226,72 @@ func TestQueryRowWithTimeout(t *testing.T) {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
-	fmt.Println("098-->", 98)
+	timedoutCtx, cancel = context.WithTimeout(ctx, time.Millisecond*100)
+	defer cancel()
+
+	prehook = func() {
+		time.Sleep(time.Millisecond * 110) // just a bit high from timeout
+	}
+	err = db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
+		Scan(timedoutCtx, &n.StringNVal)
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	}
+
+	timedoutCtx2, cancel2 := context.WithTimeout(ctx, time.Millisecond*100)
+
+	prehook = func() {
+		cancel2()
+	}
+	err = db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
+		Scan(timedoutCtx2, &n.StringNVal)
+	if err != context.Canceled {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	}
+
+	// timedoutCtx2, cancel2 = context.WithTimeout(ctx, time.Millisecond*100)
+	// prehook = func() {
+	// 	cancel2()
+	// }
+	// err = db.QueryRow(timedoutCtx2, "SELECT string_n_val FROM nullable").
+	// 	Scan(timedoutCtx2, &n.StringNVal)
+	// if err != context.Canceled {
+	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	// }
+
+	// timedoutCtx2, cancel2 = context.WithTimeout(ctx, time.Millisecond*100)
+	// prehook = func() {
+	// 	cancel2()
+	// }
+	// err = db.QueryRow(timedoutCtx2, "SELECT string_n_val FROM nullable").
+	// 	Scan(ctx, &n.StringNVal)
+	// if err != context.Canceled {
+	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	// }
+
+	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+		t.Fatalf("err while cleaning the database: %s", err.Error())
+	}
+}
+
+func TestScanWithTimeout(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db)
+	ctx := context.Background()
+
+	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+		t.Fatalf("err while adding null item: %s", err.Error())
+	}
+
+	timedoutCtx, cancel := context.WithTimeout(ctx, time.Nanosecond*10)
+	defer cancel()
+
+	n := &nullable{}
+	err := db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
+		Scan(timedoutCtx, &n.StringNVal)
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	}
 
 	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
