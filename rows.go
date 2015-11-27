@@ -51,6 +51,7 @@ func (r *Row) Scan(ctx context.Context, dest ...interface{}) (err error) {
 	done := make(chan struct{}, 1)
 
 	go func() {
+        // prehook()
 		r.err = r.row.Scan(dest...)
 		close(done)
 	}()

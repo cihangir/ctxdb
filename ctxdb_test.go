@@ -2,6 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
+	"sync"
 	"testing"
 	"time"
 
@@ -197,6 +198,8 @@ func TestQueryRow(t *testing.T) {
 	}
 }
 
+var hookMux sync.Mutex
+
 func TestQueryRowWithTimeout(t *testing.T) {
 	db := getConn(t)
 	ensureNullableTable(t, db)
@@ -229,32 +232,37 @@ func TestQueryRowWithTimeout(t *testing.T) {
 	timedoutCtx, cancel = context.WithTimeout(ctx, time.Millisecond*100)
 	defer cancel()
 
-	prehook = func() {
-		time.Sleep(time.Millisecond * 110) // just a bit high from timeout
-	}
-	err = db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
-		Scan(timedoutCtx, &n.StringNVal)
+	// hookMux.Lock()
+	// prehook = func() {}
+	row := db.QueryRow(ctx, "SELECT string_n_val FROM nullable")
+	// prehook = func() {
+	// 	time.Sleep(time.Millisecond * 110) // just a bit high from timeout
+	// 	defer hookMux.Lock()
+	// }
+	err = row.Scan(timedoutCtx, &n.StringNVal)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
-	timedoutCtx2, cancel2 := context.WithTimeout(ctx, time.Millisecond*100)
+	// timedoutCtx2, cancel2 := context.WithTimeout(ctx, time.Millisecond*100)
 
-	prehook = func() {
-		cancel2()
-	}
-	err = db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
-		Scan(timedoutCtx2, &n.StringNVal)
-	if err != context.Canceled {
-		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
-	}
-
-	// timedoutCtx2, cancel2 = context.WithTimeout(ctx, time.Millisecond*100)
+	// hookMux.Lock()
 	// prehook = func() {
 	// 	cancel2()
+	// 	defer hookMux.Lock()
 	// }
-	// err = db.QueryRow(timedoutCtx2, "SELECT string_n_val FROM nullable").
+	// err = db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
 	// 	Scan(timedoutCtx2, &n.StringNVal)
+	// if err != context.Canceled {
+	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	// }
+
+	// timedoutCtx3, cancel3 := context.WithTimeout(ctx, time.Millisecond*100)
+	// prehook = func() {
+	// 	cancel3()
+	// }
+	// err = db.QueryRow(timedoutCtx3, "SELECT string_n_val FROM nullable").
+	// 	Scan(timedoutCtx3, &n.StringNVal)
 	// if err != context.Canceled {
 	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	// }
