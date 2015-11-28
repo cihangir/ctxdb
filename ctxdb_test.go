@@ -209,73 +209,34 @@ func TestQueryRowWithTimeout(t *testing.T) {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
-	timedoutCtx, cancel := context.WithTimeout(ctx, time.Nanosecond)
+	timeoutDuration := time.Microsecond // sleep for
+
+	//
+	// test queryrow with timedoutCxt
+	//
+	timedoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
 	defer cancel()
 
+	time.Sleep(timeoutDuration)
 	n := &nullable{}
-	err := db.QueryRow(timedoutCtx, "SELECT * FROM nullable").
-		Scan(ctx, &n.StringNVal,
-		&n.StringVal,
-		&n.Int64NVal,
-		&n.Int64Val,
-		&n.Float64NVal,
-		&n.Float64Val,
-		&n.BoolNVal,
-		&n.BoolVal,
-		&n.TimeNVal,
-		&n.TimeVal,
-	)
+	row := db.QueryRow(timedoutCtx, "SELECT string_n_val FROM nullable")
+	err := row.Scan(ctx, &n.StringNVal)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
-	timedoutCtx, cancel = context.WithTimeout(ctx, time.Millisecond*100)
+	//
+	// test scan & queryrow with timedoutCxt
+	//
+	timedoutCtx, cancel = context.WithTimeout(ctx, timeoutDuration)
 	defer cancel()
+	time.Sleep(timeoutDuration)
 
-	// hookMux.Lock()
-	// prehook = func() {}
-	row := db.QueryRow(ctx, "SELECT string_n_val FROM nullable")
-	// prehook = func() {
-	// 	time.Sleep(time.Millisecond * 110) // just a bit high from timeout
-	// 	defer hookMux.Lock()
-	// }
+	row = db.QueryRow(timedoutCtx, "SELECT string_n_val FROM nullable")
 	err = row.Scan(timedoutCtx, &n.StringNVal)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
-
-	// timedoutCtx2, cancel2 := context.WithTimeout(ctx, time.Millisecond*100)
-
-	// hookMux.Lock()
-	// prehook = func() {
-	// 	cancel2()
-	// 	defer hookMux.Lock()
-	// }
-	// err = db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
-	// 	Scan(timedoutCtx2, &n.StringNVal)
-	// if err != context.Canceled {
-	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
-	// }
-
-	// timedoutCtx3, cancel3 := context.WithTimeout(ctx, time.Millisecond*100)
-	// prehook = func() {
-	// 	cancel3()
-	// }
-	// err = db.QueryRow(timedoutCtx3, "SELECT string_n_val FROM nullable").
-	// 	Scan(timedoutCtx3, &n.StringNVal)
-	// if err != context.Canceled {
-	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
-	// }
-
-	// timedoutCtx2, cancel2 = context.WithTimeout(ctx, time.Millisecond*100)
-	// prehook = func() {
-	// 	cancel2()
-	// }
-	// err = db.QueryRow(timedoutCtx2, "SELECT string_n_val FROM nullable").
-	// 	Scan(ctx, &n.StringNVal)
-	// if err != context.Canceled {
-	// 	t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
-	// }
 
 	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
@@ -291,12 +252,14 @@ func TestScanWithTimeout(t *testing.T) {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
-	timedoutCtx, cancel := context.WithTimeout(ctx, time.Nanosecond*10)
+	timeoutDuration := time.Millisecond
+	timedoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
 	defer cancel()
 
 	n := &nullable{}
-	err := db.QueryRow(ctx, "SELECT string_n_val FROM nullable").
-		Scan(timedoutCtx, &n.StringNVal)
+	row := db.QueryRow(ctx, "SELECT string_n_val FROM nullable")
+	time.Sleep(timeoutDuration)
+	err := row.Scan(timedoutCtx, &n.StringNVal)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
