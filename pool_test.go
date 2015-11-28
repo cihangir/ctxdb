@@ -101,6 +101,39 @@ func TestPutPoolClosedConn(t *testing.T) {
 	if err := conn.Ping(); err != nil && err.Error() != "sql: database is closed" {
 		t.Errorf("conn should be closed: got %# v", err)
 	}
+
+	if err := p.put(nil); err != ErrNilConn {
+		t.Errorf("Expected ErrNilConn, got: %# v", err)
+	}
+}
+
+func TestPutPoolClosedPool(t *testing.T) {
+	p := getConn(t)
+
+	conn, err := p.getFromPool()
+	if err != nil {
+		t.Errorf("Error should be nil, got: %s", err)
+	}
+
+	if conn == nil {
+		t.Errorf("conn is nil")
+	}
+
+	conns := p.getConns()
+	p.conns = nil
+
+	if err := p.put(conn); err != nil {
+		t.Errorf("Err while putting the connection: %# v", err)
+	}
+
+	if err := conn.Ping(); err != nil && err.Error() != "sql: database is closed" {
+		t.Errorf("conn should be closed: got %# v", err)
+	}
+
+	p.conns = conns
+	if err := p.put(conn); err != nil {
+		t.Errorf("Err while putting the connection: %# v", err)
+	}
 }
 
 func TestPutPoolFull(t *testing.T) {
@@ -141,11 +174,22 @@ func TestPutPoolFull(t *testing.T) {
 func TestClose(t *testing.T) {
 	p := getConn(t)
 
+	_, err := p.getFromPool()
+	if err != nil {
+		t.Errorf("Error should be nil, got: %s", err)
+	}
+
+	p.conns <- nil
 	if err := p.Close(); err != nil {
-		t.Errorf("Err while closing the connection: %# v", err)
+		t.Errorf("Error should be nil while trying to close a nil connection, got: %s", err)
 	}
 
 	if err := p.Close(); err != ErrClosed {
 		t.Errorf("Err should be Closed:  got %# v", err)
 	}
+}
+
+func TestSetMaxOpenConns(t *testing.T) {
+	p := getConn(t)
+	p.SetMaxOpenConns(1)
 }
