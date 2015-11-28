@@ -2,7 +2,6 @@ package ctxdb
 
 import (
 	"database/sql"
-	"sync"
 	"testing"
 	"time"
 
@@ -27,20 +26,44 @@ func TestPing(t *testing.T) {
 func TestProcess(t *testing.T) {
 	p := getConn(t)
 
-	done := make(chan struct{}, 1)
+	// test global time-out
+	timedoutCtx, cancel1 := context.WithTimeout(
+		context.Background(),
+		time.Millisecond,
+	)
+	defer cancel1() // releases resources if slowOperation completes before timeout elapses
+
+	done1 := make(chan struct{}, 1)
 	f := func(sqldb *sql.DB) {
-		time.Sleep(time.Millisecond * 200)
-		close(done)
+		time.Sleep(time.Millisecond * 100)
+		close(done1)
 	}
 
-	ctx, cancel := context.WithTimeout(
+	time.Sleep(time.Millisecond * 2)
+	if err := p.process(timedoutCtx, f, done1); err != context.DeadlineExceeded {
+		t.Errorf("Expected deadline exceeded, got: %# v", err)
+	}
+
+	done2 := make(chan struct{}, 1)
+	f = func(sqldb *sql.DB) {
+		time.Sleep(time.Millisecond * 120)
+		close(done2)
+	}
+
+	// test sem aquired timeout
+	semtimeoutCtx, cancel2 := context.WithTimeout(
 		context.Background(),
 		time.Millisecond*100,
 	)
-	defer cancel() // releases resources if slowOperation completes before timeout elapses
+	defer cancel2()
 
-	if err := p.process(ctx, f, done); err != context.DeadlineExceeded {
+	if err := p.process(semtimeoutCtx, f, done2); err != context.DeadlineExceeded {
 		t.Errorf("Expected deadline exceeded, got: %# v", err)
+	}
+
+	p.conns = nil
+	if err := p.process(semtimeoutCtx, f, done2); err != ErrClosed {
+		t.Errorf("Expected ClosedConnection, got: %# v", err)
 	}
 }
 
@@ -116,11 +139,6 @@ func TestExecWithTimeout(t *testing.T) {
 	if err != sql.ErrNoRows {
 		t.Fatalf("expected sql.ErrNoRows, got %s", err)
 	}
-
-	// f, err := res.RowsAffected()
-	//    if f ==
-	// fmt.Println("f-->", f)
-	// fmt.Println("err-->", err)
 }
 
 func TestQueryRow(t *testing.T) {
@@ -198,7 +216,17 @@ func TestQueryRow(t *testing.T) {
 	}
 }
 
-var hookMux sync.Mutex
+func TestQueryRowWithPoolFailure(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db)
+	ctx := context.Background()
+
+	db.conns = nil
+	row := db.QueryRow(ctx, "SELECT string_n_val FROM nullable")
+	if row.err != ErrClosed {
+		t.Fatalf("expected ErrClosed got: %+v", row)
+	}
+}
 
 func TestQueryRowWithTimeout(t *testing.T) {
 	db := getConn(t)
@@ -209,17 +237,17 @@ func TestQueryRowWithTimeout(t *testing.T) {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
-	timeoutDuration := time.Microsecond // sleep for
+	timeoutDuration := time.Millisecond * 100 // sleep for
 
 	//
 	// test queryrow with timedoutCxt
 	//
-	timedoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
-	defer cancel()
+	timedoutCtx1, cancel1 := context.WithTimeout(ctx, timeoutDuration)
+	defer cancel1()
 
-	time.Sleep(timeoutDuration)
+	time.Sleep(timeoutDuration * 2)
 	n := &nullable{}
-	row := db.QueryRow(timedoutCtx, "SELECT string_n_val FROM nullable")
+	row := db.QueryRow(timedoutCtx1, "SELECT string_n_val FROM nullable")
 	err := row.Scan(ctx, &n.StringNVal)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
@@ -228,18 +256,49 @@ func TestQueryRowWithTimeout(t *testing.T) {
 	//
 	// test scan & queryrow with timedoutCxt
 	//
-	timedoutCtx, cancel = context.WithTimeout(ctx, timeoutDuration)
-	defer cancel()
-	time.Sleep(timeoutDuration)
+	timedoutCtx2, cancel2 := context.WithTimeout(ctx, timeoutDuration)
+	defer cancel2()
+	time.Sleep(timeoutDuration * 2)
 
-	row = db.QueryRow(timedoutCtx, "SELECT string_n_val FROM nullable")
-	err = row.Scan(timedoutCtx, &n.StringNVal)
+	row = db.QueryRow(timedoutCtx2, "SELECT string_n_val FROM nullable")
+	err = row.Scan(timedoutCtx2, &n.StringNVal)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
 	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
+	}
+
+	timedoutCtx3, cancel3 := context.WithTimeout(ctx, timeoutDuration)
+	defer cancel3()
+	time.Sleep(timeoutDuration * 2)
+
+	row = db.QueryRow(timedoutCtx3, "SELECT string_n_val FROM nullable")
+	err = row.Scan(timedoutCtx3, &n.StringNVal)
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	}
+
+	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+		t.Fatalf("err while cleaning the database: %s", err.Error())
+	}
+
+	timedoutCtx4, cancel4 := context.WithTimeout(ctx, time.Millisecond)
+	defer cancel4()
+	time.Sleep(time.Millisecond)
+
+	// consume all the sems to drop to ctx.Done immediately&reliably
+	for i := 0; i < cap(db.sem); i++ {
+		select {
+		case <-db.sem:
+		default:
+		}
+	}
+
+	row = db.QueryRow(timedoutCtx4, "SELECT string_n_val FROM nullable")
+	if row.err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %+v", row)
 	}
 }
 
