@@ -61,8 +61,18 @@ func TestProcess(t *testing.T) {
 		t.Errorf("Expected deadline exceeded, got: %# v", err)
 	}
 
+	done3 := make(chan struct{}, 1)
+	f = func(sqldb *sql.DB) {
+		time.Sleep(time.Millisecond * 120)
+		close(done3)
+	}
+	semtimeoutCtx3, cancel3 := context.WithTimeout(
+		context.Background(),
+		time.Millisecond*100,
+	)
+	defer cancel3()
 	p.conns = nil
-	if err := p.process(semtimeoutCtx, f, done2); err != ErrClosed {
+	if err := p.process(semtimeoutCtx3, f, done2); err != ErrClosed {
 		t.Errorf("Expected ClosedConnection, got: %# v", err)
 	}
 }
