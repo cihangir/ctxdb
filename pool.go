@@ -76,6 +76,7 @@ func (db *DB) Close() error {
 	conns := db.conns
 	db.conns = nil
 	db.factory = nil
+
 	db.mu.Unlock()
 
 	if conns == nil {

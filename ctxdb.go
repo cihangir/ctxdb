@@ -85,7 +85,9 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 // prehook is used for testing purposes
 var prehook = func() {}
 
-func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (r *Row) {
+func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *Row {
+
+	r := &Row{}
 
 	select {
 	case <-db.sem:
@@ -93,27 +95,26 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (
 		// do not forget to put back
 		defer func() {
 			// db is not inuse anymore
-			if r.err != nil {
+			if r != nil && r.err != nil {
 				select {
-				case r.db.sem <- struct{}{}:
+				case db.sem <- struct{}{}:
 				default:
 					panic("overflow 2-->")
 				}
 			}
 		}()
 
-		var res *sql.Row
-
 		// we aquired one connection sem, continue with that
 		sqldb, err := db.getFromPool()
 		if err != nil {
-			return &Row{err: err}
+			r.err = err
+			return r
 		}
 
 		done := make(chan struct{}, 0)
+		var res *sql.Row
 
 		go func() {
-			prehook()
 			res = sqldb.QueryRow(query, args...)
 			close(done)
 		}()
@@ -144,7 +145,9 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) (
 
 	case <-ctx.Done():
 		// we could not get a connection sem in normal time
-		return &Row{err: ctx.Err(), db: db}
+		r.err = ctx.Err()
+		r.db = db
+		return r
 	}
 }
 
