@@ -2,8 +2,15 @@ package ctxdb
 
 import (
 	"database/sql"
+	"errors"
 
 	"golang.org/x/net/context"
+)
+
+var (
+	errNoRow   = errors.New("no row")
+	errNoDB    = errors.New("no db")
+	errNoSqlDB = errors.New("no sqldb")
 )
 
 type Row struct {
@@ -20,7 +27,7 @@ type Rows struct {
 	err   error
 }
 
-func (r *Row) Scan(ctx context.Context, dest ...interface{}) (err error) {
+func (r *Row) Scan(ctx context.Context, dest ...interface{}) error {
 	// we can safely return here since db connections are handled on previous step
 	if r.err != nil {
 		return r.err
@@ -28,54 +35,29 @@ func (r *Row) Scan(ctx context.Context, dest ...interface{}) (err error) {
 
 	// internal validations
 	if r.row == nil {
-		panic("no row")
+		return errNoRow
 	}
 
 	if r.db == nil {
-		panic("no db")
+		return errNoDB
 	}
 
 	if r.sqldb == nil {
-		panic("no sqldb")
+		return errNoSqlDB
 	}
-
-	// do not forget to put back connection
-	defer func() {
-		select {
-		case r.db.sem <- struct{}{}:
-		default:
-			panic("overflow 1-->")
-		}
-	}()
 
 	done := make(chan struct{}, 1)
 
-	go func() {
-        // prehook()
+	f := func() {
 		r.err = r.row.Scan(dest...)
 		close(done)
-	}()
+	}
 
-	select {
-	case <-ctx.Done():
-		// can be nil when we have timeout on db connection obtaining
-		err = r.sqldb.Close()
-		if err != nil {
-			return err
-		}
-
-		err = ctx.Err()
-		return err
-	case <-done:
-		err = r.db.put(r.sqldb)
-		if err != nil {
-			return err
-		}
-
-		err = r.err
+	if err := r.db.processWithGivenSQL(ctx, f, done, r.sqldb); err != nil {
 		return err
 	}
 
+	return r.err
 }
 
 func (rs *Rows) Close(ctx context.Context) error {
@@ -86,14 +68,8 @@ func (rs *Rows) Close(ctx context.Context) error {
 		close(done)
 	}
 
-	if err := rs.processRows(ctx, f, done); err != nil {
+	if err := rs.db.processWithGivenSQL(ctx, f, done, rs.sqldb); err != nil {
 		return err
-	}
-
-	if err == nil {
-		if err := rs.db.put(rs.sqldb); err != nil {
-			return err
-		}
 	}
 
 	return err
@@ -108,7 +84,7 @@ func (rs *Rows) Columns(ctx context.Context) ([]string, error) {
 		close(done)
 	}
 
-	if err := rs.processRows(ctx, f, done); err != nil {
+	if err := rs.db.handleWithGivenSQL(ctx, f, done, rs.sqldb); err != nil {
 		return nil, err
 	}
 
@@ -116,6 +92,10 @@ func (rs *Rows) Columns(ctx context.Context) ([]string, error) {
 }
 
 func (rs *Rows) Err() error {
+	if rs.err != nil {
+		return rs.err
+	}
+
 	return rs.rows.Err()
 }
 
@@ -127,7 +107,8 @@ func (rs *Rows) Next(ctx context.Context) bool {
 		close(done)
 	}
 
-	if err := rs.processRows(ctx, f, done); err != nil {
+	if err := rs.db.handleWithGivenSQL(ctx, f, done, rs.sqldb); err != nil {
+		rs.err = err
 		return false
 	}
 
@@ -142,24 +123,5 @@ func (rs *Rows) Scan(ctx context.Context, dest ...interface{}) error {
 		close(done)
 	}
 
-	if err := rs.processRows(ctx, f, done); err != nil {
-		return err
-	}
-
-	return err
-}
-
-func (rs *Rows) processRows(ctx context.Context, f func(), done chan struct{}) error {
-	go f()
-
-	select {
-	case <-ctx.Done():
-		if err := rs.sqldb.Close(); err != nil {
-			return err
-		}
-
-		return ctx.Err()
-	case <-done:
-		return nil
-	}
+	return rs.db.handleWithGivenSQL(ctx, f, done, rs.sqldb)
 }
