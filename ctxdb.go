@@ -2,6 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
+	"errors"
 	"sync"
 
 	"golang.org/x/net/context"
@@ -106,25 +107,90 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 // QueryRow always return a non-nil value. Errors are deferred until Row's Scan
 // method is called.
 func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *Row {
+	done := make(chan struct{}, 0)
 
-	r := &Row{}
+	var res *sql.Row
+
+	f := func(sqldb *sql.DB) {
+		res = sqldb.QueryRow(query, args...)
+		close(done)
+	}
+
+	sqldb, err := db.handleWithSQL(ctx, f, done)
+	if err != nil {
+		return &Row{err: err}
+	}
+
+	return &Row{
+		row:   res,
+		sqldb: sqldb,
+		db:    db,
+	}
+}
+
+// Query executes a query that returns rows, typically a SELECT. The args are
+// for any placeholder parameters in the query.
+func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
+	done := make(chan struct{}, 0)
+	var res *sql.Rows
+	var queryErr error
+	f := func(sqldb *sql.DB) {
+		res, queryErr = sqldb.Query(query, args...)
+		close(done)
+	}
+
+	sqldb, err := db.handleWithSQL(ctx, f, done)
+	if err != nil {
+		return nil, err
+	}
+
+	if queryErr != nil {
+		return nil, queryErr
+	}
+
+	return &Rows{
+		rows:  res,
+		sqldb: sqldb,
+		db:    db,
+	}, nil
+
+}
+
+// process accepts context for deadlines, f for operation, and done channel for
+// signalling operation. At the end of the operation, puts db back to pool and
+// increments the sem
+func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
+	sqlDB, err := db.handleWithSQL(ctx, f, done)
+	if err != nil {
+		return err
+	}
+
+	select {
+	case db.sem <- struct{}{}:
+		return db.put(sqlDB)
+	default:
+		return errors.New("sem overflow 2")
+	}
+
+}
 
 // handleWithSQL accepts context for deadlines, f for operation, and done
 // channel for signalling operation, if an error occurs while operating, closes
 // the underlying database connection immediately, and signals the sem chan for
 // recycling a new db. If operation is successfull, returns the underlying db
 // connection, receiver must handle the sem communication and db lifecycle
+func (db *DB) handleWithSQL(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) (*sql.DB, error) {
 	select {
 	case <-db.sem:
+		var err error
 
-		// do not forget to put back
 		defer func() {
 			// db is not inuse anymore
-			if r != nil && r.err != nil {
+			if err != nil {
 				select {
 				case db.sem <- struct{}{}:
 				default:
-					panic("overflow 2-->")
+					panic("sem overflow 5")
 				}
 			}
 		}()
@@ -132,85 +198,55 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 		// we aquired one connection sem, continue with that
 		sqldb, err := db.getFromPool()
 		if err != nil {
-			r.err = err
-			return r
+			return nil, err
 		}
 
-		done := make(chan struct{}, 0)
-		var res *sql.Row
+		fn := func() { f(sqldb) }
 
-		go func() {
-			res = sqldb.QueryRow(query, args...)
-			close(done)
-		}()
-
-		select {
-		case <-ctx.Done():
-
-			r = &Row{
-				row:   res,
-				err:   ctx.Err(),
-				sqldb: sqldb,
-				db:    db,
-			}
-
-			if err := sqldb.Close(); err != nil {
-				r.err = err
-			}
-
-			return r
-		case <-done:
-			r = &Row{
-				row:   res,
-				sqldb: sqldb,
-				db:    db,
-			}
-			return r
+		err = db.handleWithGivenSQL(ctx, fn, done, sqldb)
+		if err != nil {
+			return nil, err
 		}
 
+		return sqldb, nil
 	case <-ctx.Done():
-		// we could not get a connection sem in normal time
-		r.err = ctx.Err()
-		r.db = db
-		return r
+		return nil, ctx.Err()
 	}
 }
 
-func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
-	select {
-	case <-db.sem:
-		// do not forget to put back connection
-		defer func() {
-			select {
-			case db.sem <- struct{}{}:
-			default:
-				panic("overflow 3-->")
-			}
-		}()
+// handleWithGivenSQL closes the given db connection if given context return an
+// error while executing the give f func
+func (db *DB) handleWithGivenSQL(ctx context.Context, f func(), done chan struct{}, sqldb *sql.DB) error {
+	var err error
 
-		// we aquired one connection sem, continue with that
-		sqldb, err := db.getFromPool()
+	go f()
+
+	select {
+	case <-ctx.Done():
+		err = sqldb.Close()
 		if err != nil {
 			return err
 		}
 
-		go f(sqldb)
+		err = ctx.Err()
+		return err
+	case <-done:
+		return nil
+	}
 
-		select {
-		case <-ctx.Done():
-			if err := sqldb.Close(); err != nil {
-				return err
-			}
+}
 
-			return ctx.Err()
-		case <-done:
-			err := db.put(sqldb)
+func (db *DB) processWithGivenSQL(ctx context.Context, f func(), done chan struct{}, sqldb *sql.DB) error {
+	err := db.handleWithGivenSQL(ctx, f, done, sqldb)
+	select {
+	case db.sem <- struct{}{}:
+		if err != nil {
 			return err
 		}
 
-	case <-ctx.Done():
-		// we could not get a connection sem in normal time
-		err := ctx.Err()
-		return err
+		return db.put(sqldb)
+	default:
+		return errors.New("sem overflow 2")
 	}
+
 }
