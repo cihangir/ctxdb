@@ -159,7 +159,6 @@ func TestQueryRow(t *testing.T) {
 	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
-
 	n := &nullable{}
 	err := db.QueryRow(ctx, "SELECT * FROM nullable").
 		Scan(ctx, &n.StringNVal,
@@ -176,7 +175,6 @@ func TestQueryRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
-
 	if n.StringVal != "NULLABLE" {
 		t.Fatalf("expected NULLABLE, got: ", n.StringVal)
 	}
@@ -309,32 +307,6 @@ func TestQueryRowWithTimeout(t *testing.T) {
 	row = db.QueryRow(timedoutCtx4, "SELECT string_n_val FROM nullable")
 	if row.err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %+v", row)
-	}
-}
-
-func TestScanWithTimeout(t *testing.T) {
-	db := getConn(t)
-	ensureNullableTable(t, db)
-	ctx := context.Background()
-
-	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
-		t.Fatalf("err while adding null item: %s", err.Error())
-	}
-
-	timeoutDuration := time.Millisecond
-	timedoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
-	defer cancel()
-
-	n := &nullable{}
-	row := db.QueryRow(ctx, "SELECT string_n_val FROM nullable")
-	time.Sleep(timeoutDuration)
-	err := row.Scan(timedoutCtx, &n.StringNVal)
-	if err != context.DeadlineExceeded {
-		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
-	}
-
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
-		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 }
 
