@@ -151,6 +151,37 @@ func TestExecWithTimeout(t *testing.T) {
 	}
 }
 
+func TestQuery(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db)
+	ctx := context.Background()
+
+	rows, err := db.Query(ctx, "SELECT string_n_val FROM nullable")
+	if err != nil {
+		t.Fatalf("expected nil, got: %s", err)
+	}
+
+	if rows == nil {
+		t.Fatalf("expected not nil")
+	}
+}
+
+func TestQueryTimeout(t *testing.T) {
+	db := getConn(t)
+	ensureNullableTable(t, db)
+	ctx := context.Background()
+
+	timeout := time.Millisecond * 50
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	time.Sleep(timeout)
+
+	_, err := db.Query(ctx, "SELECT string_n_val FROM nullable")
+	if err != context.DeadlineExceeded {
+		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
+	}
+}
+
 func TestQueryRow(t *testing.T) {
 	db := getConn(t)
 	ensureNullableTable(t, db)
