@@ -3,6 +3,7 @@ package ctxdb
 import (
 	"database/sql"
 	"errors"
+	"sync"
 
 	"golang.org/x/net/context"
 )
@@ -25,6 +26,7 @@ type Rows struct {
 	sqldb *sql.DB
 	db    *DB
 	err   error
+	mu    sync.Mutex
 }
 
 func (r *Row) Scan(ctx context.Context, dest ...interface{}) error {
@@ -61,6 +63,10 @@ func (r *Row) Scan(ctx context.Context, dest ...interface{}) error {
 }
 
 func (rs *Rows) Close(ctx context.Context) error {
+	if rs.err != nil {
+		return rs.err
+	}
+
 	done := make(chan struct{}, 1)
 	var err error
 	f := func() {
@@ -76,6 +82,10 @@ func (rs *Rows) Close(ctx context.Context) error {
 }
 
 func (rs *Rows) Columns(ctx context.Context) ([]string, error) {
+	if rs.err != nil {
+		return nil, rs.err
+	}
+
 	done := make(chan struct{}, 1)
 	var err error
 	var columns []string
@@ -100,6 +110,10 @@ func (rs *Rows) Err() error {
 }
 
 func (rs *Rows) Next(ctx context.Context) bool {
+	if rs.err != nil {
+		return false
+	}
+
 	done := make(chan struct{}, 1)
 	var res bool
 	f := func() {
@@ -116,6 +130,10 @@ func (rs *Rows) Next(ctx context.Context) bool {
 }
 
 func (rs *Rows) Scan(ctx context.Context, dest ...interface{}) error {
+	if rs.err != nil {
+		return rs.err
+	}
+
 	done := make(chan struct{}, 1)
 	var err error
 	f := func() {
