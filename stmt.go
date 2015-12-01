@@ -14,106 +14,91 @@ type Stmt struct {
 }
 
 func (s *Stmt) Close(ctx context.Context) error {
+	if s.err != nil {
+		return s.err
+	}
 
 	done := make(chan struct{}, 0)
 
 	var err error
-	go func() {
+	f := func() {
 		err = s.stmt.Close()
 		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		if err := s.sqldb.Close(); err != nil {
-			return err
-		}
-
-		return ctx.Err()
-	case <-done:
-		return err
 	}
 
+	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); err != nil {
+		return opErr
+	}
+
+	return err
 }
 
 func (s *Stmt) Exec(ctx context.Context, args ...interface{}) (sql.Result, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
 	done := make(chan struct{}, 0)
 
 	var res sql.Result
 	var err error
-	go func() {
+	f := func() {
 		res, err = s.stmt.Exec(args...)
 		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		if err := s.sqldb.Close(); err != nil {
-			return nil, err
-		}
-
-		return nil, ctx.Err()
-	case <-done:
-		return res, err
 	}
+
+	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); err != nil {
+		return nil, opErr
+	}
+
+	return res, err
 }
 
 func (s *Stmt) Query(ctx context.Context, args ...interface{}) (*Rows, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
 	done := make(chan struct{}, 0)
 
 	var res *sql.Rows
 	var err error
-	go func() {
+	f := func() {
 		res, err = s.stmt.Query(args...)
 		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		if err := s.sqldb.Close(); err != nil {
-			return nil, err
-		}
-
-		return nil, ctx.Err()
-	case <-done:
-		r := &Rows{
-			rows:  res,
-			err:   err,
-			sqldb: s.sqldb,
-			db:    s.db,
-		}
-		return r, err
 	}
+
+	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); opErr != nil {
+		return nil, opErr
+	}
+
+	return &Rows{
+		rows:  res,
+		sqldb: s.sqldb,
+		db:    s.db,
+	}, nil
 }
 
 func (s *Stmt) QueryRow(ctx context.Context, args ...interface{}) *Row {
+	if s.err != nil {
+		return &Row{err: s.err}
+	}
+
 	done := make(chan struct{}, 0)
 
 	var res *sql.Row
-	go func() {
+	f := func() {
 		res = s.stmt.QueryRow(args...)
 		close(done)
-	}()
+	}
 
-	select {
-	case <-ctx.Done():
-		r := &Row{
-			row:   res,
-			err:   ctx.Err(),
-			sqldb: s.sqldb,
-			db:    s.db,
-		}
+	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); opErr != nil {
+		return &Row{err: opErr}
+	}
 
-		if err := s.sqldb.Close(); err != nil {
-			r.err = err
-		}
-
-		return r
-	case <-done:
-		return &Row{
-			row:   res,
-			sqldb: s.sqldb,
-			db:    s.db,
-		}
+	return &Row{
+		row:   res,
+		sqldb: s.sqldb,
+		db:    s.db,
 	}
 }
