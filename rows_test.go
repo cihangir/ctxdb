@@ -134,6 +134,10 @@ func TestRowsScanNextErr(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
+	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+		t.Fatalf("err while cleaning the database: %s", err.Error())
+	}
+
 	// prepare data set
 	for i := 1; i < 5; i++ {
 		if _, err := db.Exec(ctx, insertSqlStatement, i, nil, 42); err != nil {
@@ -141,23 +145,27 @@ func TestRowsScanNextErr(t *testing.T) {
 		}
 	}
 
-	rows, err := db.Query(ctx, "SELECT string_n_val FROM nullable WHERE int64_n_val > $1 ORDER BY int64_n_val", 0)
+	rows, err := db.Query(ctx, "SELECT int64_val FROM nullable WHERE int64_val > $1 ORDER BY int64_val", 0)
 	if err != nil {
 		t.Fatalf("expected nil, got: %s", err)
 	}
 
 	var i int64 = 1
 	for rows.Next(ctx) {
-		var int64_n_val int64
-		if err := rows.Scan(ctx, &int64_n_val); err != nil {
+		var int64_val int64
+		if err := rows.Scan(ctx, &int64_val); err != nil {
 			t.Fatalf("expected nil, got: %s", err)
 		}
 
-		if int64_n_val != i {
-			t.Fatalf("expected int64_n_val to be same with %d, got: %d", i, int64_n_val)
+		if int64_val != i {
+			t.Fatalf("expected int64_val to be same with %d, got: %d", i, int64_val)
 		}
 
 		i++
+	}
+
+	if i != 5 {
+		t.Fatalf("i should be 5, got: %d", i)
 	}
 
 	if err := rows.Err(); err != nil {
