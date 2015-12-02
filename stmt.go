@@ -72,6 +72,10 @@ func (s *Stmt) Query(ctx context.Context, args ...interface{}) (*Rows, error) {
 		return nil, opErr
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
 	return &Rows{
 		rows:  res,
 		sqldb: s.sqldb,
