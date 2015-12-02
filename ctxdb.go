@@ -156,6 +156,36 @@ func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (*Ro
 
 }
 
+// Prepare creates a prepared statement for later queries or executions.
+// Multiple queries or executions may be run concurrently from the returned
+// statement. The caller must call the statement's Close method when the
+// statement is no longer needed.
+func (db *DB) Prepare(ctx context.Context, query string) (*Stmt, error) {
+	done := make(chan struct{}, 0)
+	var res *sql.Stmt
+	var queryErr error
+	f := func(sqldb *sql.DB) {
+		res, queryErr = sqldb.Prepare(query)
+		close(done)
+	}
+
+	sqldb, err := db.handleWithSQL(ctx, f, done)
+	if err != nil {
+		return nil, err
+	}
+
+	if queryErr != nil {
+		return nil, queryErr
+	}
+
+	return &Stmt{
+		stmt:  res,
+		sqldb: sqldb,
+		db:    db,
+	}, nil
+
+}
+
 // process accepts context for deadlines, f for operation, and done channel for
 // signalling operation. At the end of the operation, puts db back to pool and
 // increments the sem
