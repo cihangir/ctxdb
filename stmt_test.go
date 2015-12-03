@@ -83,8 +83,8 @@ func TestStmt(t *testing.T) {
 		t.Fatalf("Row should not be nil")
 	}
 
-	// var int64_val int64
-	// if err := row.Scan(ctx, &int64_val); err != nil {
-	// 	t.Fatalf("err should not be nil %s", err)
-	// }
+	var int64_val int64
+	if err := row.Scan(ctx, &int64_val); err == nil {
+		t.Fatalf("should fail")
+	}
 }
