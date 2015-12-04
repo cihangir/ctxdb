@@ -87,4 +87,18 @@ func TestStmt(t *testing.T) {
 	if err := row.Scan(ctx, &int64_val); err != nil {
 		t.Fatalf("should fail", err)
 	}
+
+	// we scanned just the first row
+	if int64_val != 1 {
+		t.Fatalf(" int64_val should be 1, got: %d", int64_val)
+	}
+
+	if err := stmt.Close(ctx); err != nil {
+		t.Fatalf("err while closing stmt %s", err)
+	}
+
+	if err := stmt.Close(ctx); err != nil {
+		t.Fatalf("err while closing stmt again %s", err)
+	}
+
 }
