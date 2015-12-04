@@ -8,6 +8,7 @@ import (
 
 type Stmt struct {
 	stmt  *sql.Stmt
+	query string
 	err   error
 	sqldb *sql.DB
 	db    *DB

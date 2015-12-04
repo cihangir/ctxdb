@@ -180,6 +180,7 @@ func (db *DB) Prepare(ctx context.Context, query string) (*Stmt, error) {
 
 	return &Stmt{
 		stmt:  res,
+		query: query,
 		sqldb: sqldb,
 		db:    db,
 	}, nil
