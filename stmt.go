@@ -43,12 +43,20 @@ func (s *Stmt) Exec(ctx context.Context, args ...interface{}) (sql.Result, error
 
 	var res sql.Result
 	var err error
-	f := func() {
-		res, err = s.stmt.Exec(args...)
-		close(done)
+	f := func(sqldb *sql.DB) {
+		defer close(done)
+
+		var stmt *sql.Stmt
+		stmt, err = sqldb.Prepare(s.query)
+		if err != nil {
+			return
+		}
+
+		res, err = stmt.Exec(args...)
+
 	}
 
-	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); err != nil {
+	if opErr := s.db.process(ctx, f, done); opErr != nil {
 		return nil, opErr
 	}
 
@@ -64,12 +72,22 @@ func (s *Stmt) Query(ctx context.Context, args ...interface{}) (*Rows, error) {
 
 	var res *sql.Rows
 	var err error
-	f := func() {
-		res, err = s.stmt.Query(args...)
-		close(done)
+
+	f := func(sqldb *sql.DB) {
+		defer close(done)
+
+		var stmt *sql.Stmt
+		stmt, err = sqldb.Prepare(s.query)
+		if err != nil {
+			return
+		}
+
+		res, err = stmt.Query(args...)
+
 	}
 
-	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); opErr != nil {
+	sqldb, opErr := s.db.handleWithSQL(ctx, f, done)
+	if opErr != nil {
 		return nil, opErr
 	}
 
@@ -79,7 +97,7 @@ func (s *Stmt) Query(ctx context.Context, args ...interface{}) (*Rows, error) {
 
 	return &Rows{
 		rows:  res,
-		sqldb: s.sqldb,
+		sqldb: sqldb,
 		db:    s.db,
 	}, nil
 }
@@ -92,12 +110,19 @@ func (s *Stmt) QueryRow(ctx context.Context, args ...interface{}) *Row {
 	done := make(chan struct{}, 0)
 
 	var res *sql.Row
-	f := func() {
-		res = s.stmt.QueryRow(args...)
-		close(done)
+	f := func(sqldb *sql.DB) {
+		defer close(done)
+
+		var stmt *sql.Stmt
+		stmt, err := sqldb.Prepare(s.query)
+		if err != nil {
+			return
+		}
+
+		res = stmt.QueryRow(args...)
 	}
 
-	if opErr := s.db.handleWithGivenSQL(ctx, f, done, s.sqldb); opErr != nil {
+	if _, opErr := s.db.handleWithSQL(ctx, f, done); opErr != nil {
 		return &Row{err: opErr}
 	}
 

@@ -84,7 +84,7 @@ func TestStmt(t *testing.T) {
 	}
 
 	var int64_val int64
-	if err := row.Scan(ctx, &int64_val); err == nil {
-		t.Fatalf("should fail")
+	if err := row.Scan(ctx, &int64_val); err != nil {
+		t.Fatalf("should fail", err)
 	}
 }
