@@ -34,6 +34,10 @@ func (s *Stmt) Close(ctx context.Context) error {
 	return err
 }
 
+// Exec executes a prepared statement with the given arguments and returns a Result
+// summarizing the effect of the statement.
+//
+// Exec prepares the same statement on another connection and executes it
 func (s *Stmt) Exec(ctx context.Context, args ...interface{}) (sql.Result, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -63,6 +67,10 @@ func (s *Stmt) Exec(ctx context.Context, args ...interface{}) (sql.Result, error
 	return res, err
 }
 
+// Query executes a prepared query statement with the given arguments and
+// returns the query results as a *Rows.
+//
+// Query prepares the same statement on another connection and queries it
 func (s *Stmt) Query(ctx context.Context, args ...interface{}) (*Rows, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -102,6 +110,13 @@ func (s *Stmt) Query(ctx context.Context, args ...interface{}) (*Rows, error) {
 	}, nil
 }
 
+// QueryRow executes a prepared query statement with the given arguments. If an
+// error occurs during the execution of the statement, that error will be returned
+// by a call to Scan on the returned *Row, which is always non-nil. If the query
+// selects no rows, the *Row's Scan will return ErrNoRows. Otherwise, the *Row's
+// Scan scans the first selected row and discards the rest.
+//
+// QueryRow prepares the same statement on another connection and queries it
 func (s *Stmt) QueryRow(ctx context.Context, args ...interface{}) *Row {
 	if s.err != nil {
 		return &Row{err: s.err}
