@@ -214,18 +214,12 @@ func (db *DB) Prepare(ctx context.Context, query string) (*Stmt, error) {
 // signalling operation. At the end of the operation, puts db back to pool and
 // increments the sem
 func (db *DB) process(ctx context.Context, f func(sqldb *sql.DB), done chan struct{}) error {
-	sqlDB, err := db.handleWithSQL(ctx, f, done)
+	sqldb, err := db.handleWithSQL(ctx, f, done)
 	if err != nil {
 		return err
 	}
 
-	select {
-	case db.sem <- struct{}{}:
-		return db.put(sqlDB)
-	default:
-		return errors.New("sem overflow 2")
-	}
-
+	return db.restoreOrClose(nil, sqldb)
 }
 
 // handleWithSQL accepts context for deadlines, f for operation, and done
@@ -268,6 +262,11 @@ func (db *DB) handleWithSQL(ctx context.Context, f func(sqldb *sql.DB), done cha
 	}
 }
 
+func (db *DB) processWithGivenSQL(ctx context.Context, f func(), done chan struct{}, sqldb *sql.DB) error {
+	err := db.handleWithGivenSQL(ctx, f, done, sqldb)
+	return db.restoreOrClose(err, sqldb)
+}
+
 // handleWithGivenSQL closes the given db connection if given context return an
 // error while executing the give f func
 func (db *DB) handleWithGivenSQL(ctx context.Context, f func(), done chan struct{}, sqldb *sql.DB) error {
@@ -290,17 +289,21 @@ func (db *DB) handleWithGivenSQL(ctx context.Context, f func(), done chan struct
 
 }
 
-func (db *DB) processWithGivenSQL(ctx context.Context, f func(), done chan struct{}, sqldb *sql.DB) error {
-	err := db.handleWithGivenSQL(ctx, f, done, sqldb)
+func (db *DB) restoreOrClose(err error, sqldb *sql.DB) error {
 	select {
 	case db.sem <- struct{}{}:
-		if err != nil {
+		if err == nil {
+			return db.put(sqldb)
+		}
+
+		// Close is idempotent
+		if err := sqldb.Close(); err != nil {
 			return err
 		}
 
-		return db.put(sqldb)
-	default:
-		return errors.New("sem overflow 2")
-	}
+		return err
 
+	default:
+		return errors.New("sem overflow in restoreOrClose")
+	}
 }
