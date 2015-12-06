@@ -137,13 +137,14 @@ func (s *Stmt) QueryRow(ctx context.Context, args ...interface{}) *Row {
 		res = stmt.QueryRow(args...)
 	}
 
-	if _, opErr := s.db.handleWithSQL(ctx, f, done); opErr != nil {
+	sqldb, opErr := s.db.handleWithSQL(ctx, f, done)
+	if opErr != nil {
 		return &Row{err: opErr}
 	}
 
 	return &Row{
 		row:   res,
-		sqldb: s.sqldb,
+		sqldb: sqldb,
 		db:    s.db,
 	}
 }
