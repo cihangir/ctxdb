@@ -83,6 +83,29 @@ func (db *DB) Ping(ctx context.Context) error {
 	return nil
 }
 
+// Begin starts a transaction. The isolation level is dependent on the driver.
+func (db *DB) Begin(ctx context.Context) (*Tx, error) {
+	done := make(chan struct{}, 1)
+
+	var err error
+	var tx *sql.Tx
+	f := func(sqldb *sql.DB) {
+		tx, err = sqldb.Begin()
+		close(done)
+	}
+
+	sqldb, opErr := db.handleWithSQL(ctx, f, done)
+	if opErr != nil {
+		return nil, opErr
+	}
+
+	return &Tx{
+		tx:    tx,
+		sqldb: sqldb,
+		db:    db,
+	}, nil
+}
+
 // Exec executes a query without returning any rows. The args are for any
 // placeholder parameters in the query.
 func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
