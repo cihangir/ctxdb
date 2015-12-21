@@ -13,13 +13,13 @@ func TestTx(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 
 	// prepare data set
 	for i := 1; i < 5; i++ {
-		if _, err := db.Exec(ctx, insertSqlStatement, i, nil, 42); err != nil {
+		if _, err := db.Exec(ctx, insertSQLStatement, i, nil, 42); err != nil {
 			t.Fatalf("err while adding null item: %s", err.Error())
 		}
 	}
@@ -56,13 +56,13 @@ func TestTx(t *testing.T) {
 
 	var i int64 = 1
 	for rows.Next(ctx) {
-		var int64_val int64
-		if err := rows.Scan(ctx, &int64_val); err != nil {
+		var int64val int64
+		if err := rows.Scan(ctx, &int64val); err != nil {
 			t.Fatalf("expected nil, got: %s", err)
 		}
 
-		if int64_val != i {
-			t.Fatalf("expected int64_val to be same with %d, got: %d", i, int64_val)
+		if int64val != i {
+			t.Fatalf("expected int64val to be same with %d, got: %d", i, int64val)
 		}
 
 		i++
@@ -85,14 +85,14 @@ func TestTx(t *testing.T) {
 		t.Fatalf("Row should not be nil")
 	}
 
-	var int64_val int64
-	if err := row.Scan(ctx, &int64_val); err != nil {
-		t.Fatalf("should fail", err)
+	var int64val int64
+	if err := row.Scan(ctx, &int64val); err != nil {
+		t.Fatalf("should not fail with %s", err)
 	}
 
 	// we scanned just the first row
-	if int64_val != 1 {
-		t.Fatalf(" int64_val should be 1, got: %d", int64_val)
+	if int64val != 1 {
+		t.Fatalf(" int64val should be 1, got: %d", int64val)
 	}
 
 	if err := stmt.Close(ctx); err != nil {

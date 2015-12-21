@@ -6,8 +6,13 @@ import (
 )
 
 var (
-	ErrClosed              = errors.New("connection is closed")
-	ErrNilConn             = errors.New("connection is nil. rejecting")
+	// ErrClosed represents closed ctxdb error
+	ErrClosed = errors.New("connection is closed")
+
+	// ErrNilConn represents given nil connection error TODO(cihangir) panic maybe
+	ErrNilConn = errors.New("connection is nil. rejecting")
+
+	// ErrMaxConnLimitReached represents overuse of connections
 	ErrMaxConnLimitReached = errors.New("connection limit reached")
 )
 
@@ -17,6 +22,7 @@ var (
 // 	db.confMu.Unlock()
 // }
 
+// SetMaxOpenConns sets the maximum number of open connections to the database.
 func (db *DB) SetMaxOpenConns(i int) {
 	db.mu.Lock()
 	db.maxOpenConns = i

@@ -11,9 +11,10 @@ import (
 var (
 	errNoRow   = errors.New("no row")
 	errNoDB    = errors.New("no db")
-	errNoSqlDB = errors.New("no sqldb")
+	errNoSQLDB = errors.New("no sqldb")
 )
 
+// Row is the result of calling QueryRow to select a single row.
 type Row struct {
 	row   *sql.Row
 	sqldb *sql.DB
@@ -21,6 +22,20 @@ type Row struct {
 	err   error
 }
 
+// Rows is the result of a query. Its cursor starts before the first row
+// of the result set. Use Next to advance through the rows:
+//
+//     rows, err := db.Query("SELECT ...")
+//     ...
+//     defer rows.Close(ctx)
+//     for rows.Next(ctx) {
+//         var id int
+//         var name string
+//         err = rows.Scan(ctx, &id, &name)
+//         ...
+//     }
+//     err = rows.Err() // get any error encountered during iteration
+//     ...
 type Rows struct {
 	rows  *sql.Rows
 	sqldb *sql.DB
@@ -45,7 +60,7 @@ func (r *Row) Scan(ctx context.Context, dest ...interface{}) error {
 	}
 
 	if r.sqldb == nil {
-		return errNoSqlDB
+		return errNoSQLDB
 	}
 
 	done := make(chan struct{}, 1)

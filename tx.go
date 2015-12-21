@@ -7,6 +7,15 @@ import (
 	"golang.org/x/net/context"
 )
 
+// Tx is an in-progress database transaction.
+//
+// A transaction must end with a call to Commit or Rollback.
+//
+// After a call to Commit or Rollback, all operations on the transaction fail
+// with ErrTxDone.
+//
+// The statements prepared for a transaction by calling the transaction's
+// Prepare or Stmt methods are closed by the call to Commit or Rollback.
 type Tx struct {
 	tx        *sql.Tx
 	sqldb     *sql.DB
@@ -230,6 +239,8 @@ func (tx *Tx) QueryRow(ctx context.Context, query string, args ...interface{}) *
 		}
 	}
 }
+
+// Rollback aborts the transaction.
 func (tx *Tx) Rollback(ctx context.Context) error {
 	tx.Lock()
 	defer tx.Unlock()

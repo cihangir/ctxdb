@@ -11,13 +11,13 @@ func TestStmt(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 
 	// prepare data set
 	for i := 1; i < 5; i++ {
-		if _, err := db.Exec(ctx, insertSqlStatement, i, nil, 42); err != nil {
+		if _, err := db.Exec(ctx, insertSQLStatement, i, nil, 42); err != nil {
 			t.Fatalf("err while adding null item: %s", err.Error())
 		}
 	}

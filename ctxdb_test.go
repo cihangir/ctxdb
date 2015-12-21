@@ -102,7 +102,7 @@ func TestExec(t *testing.T) {
 func ensureNullableTable(t *testing.T, db *DB) {
 
 	ctx := context.Background()
-	res, err := db.Exec(ctx, createTableSqlStatement)
+	res, err := db.Exec(ctx, createTableSQLStatement)
 	if err != nil {
 		t.Fatalf("Error while ensuring the nullable table %+v", err)
 	}
@@ -120,7 +120,7 @@ func TestExecWithTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctx, time.Nanosecond*10)
 	defer cancel()
 
-	_, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12)
+	_, err := db.Exec(ctx, insertSQLStatement, 42, nil, 12)
 	if err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
@@ -187,7 +187,7 @@ func TestQueryRow(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+	if _, err := db.Exec(ctx, insertSQLStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 	n := &nullable{}
@@ -207,7 +207,7 @@ func TestQueryRow(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 	if n.StringVal != "NULLABLE" {
-		t.Fatalf("expected NULLABLE, got: ", n.StringVal)
+		t.Fatalf("expected NULLABLE, got: %+v", n.StringVal)
 	}
 
 	if n.StringNVal.Valid {
@@ -250,7 +250,7 @@ func TestQueryRow(t *testing.T) {
 		t.Fatalf("err while clearing nullable table: %s", err.Error())
 	}
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 }
@@ -272,7 +272,7 @@ func TestQueryRowWithTimeout(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+	if _, err := db.Exec(ctx, insertSQLStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
@@ -305,7 +305,7 @@ func TestQueryRowWithTimeout(t *testing.T) {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 
@@ -319,7 +319,7 @@ func TestQueryRowWithTimeout(t *testing.T) {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 
@@ -342,10 +342,10 @@ func TestQueryRowWithTimeout(t *testing.T) {
 }
 
 var (
-	insertSqlStatement = `INSERT INTO nullable
+	insertSQLStatement = `INSERT INTO nullable
 VALUES ( NULL, 'NULLABLE', NULL, $1, $2, $3, NULL, true, NULL, NOW() )`
 
-	createTableSqlStatement = `CREATE TABLE IF NOT EXISTS nullable (
+	createTableSQLStatement = `CREATE TABLE IF NOT EXISTS nullable (
     string_n_val VARCHAR (255) DEFAULT NULL,
     string_val VARCHAR (255) DEFAULT 'empty',
     int64_n_val BIGINT DEFAULT NULL,
@@ -357,5 +357,5 @@ VALUES ( NULL, 'NULLABLE', NULL, $1, $2, $3, NULL, true, NULL, NOW() )`
     time_n_val timestamp,
     time_val timestamp NOT NULL
 )`
-	deleteSqlStatement = `DELETE FROM nullable`
+	deleteSQLStatement = `DELETE FROM nullable`
 )

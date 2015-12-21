@@ -12,7 +12,7 @@ func TestScanWithTimeout(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+	if _, err := db.Exec(ctx, insertSQLStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
@@ -28,7 +28,7 @@ func TestScanWithTimeout(t *testing.T) {
 		t.Fatalf("expected context.DeadlineExceeded, got: %s", err)
 	}
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 }
@@ -42,7 +42,7 @@ func TestScanNilChecks(t *testing.T) {
 	row := db.QueryRow(ctx, "SELECT string_n_val FROM nullable")
 
 	row.sqldb = nil
-	if err := row.Scan(ctx, &n.StringNVal); err != errNoSqlDB {
+	if err := row.Scan(ctx, &n.StringNVal); err != errNoSQLDB {
 		t.Fatalf("expected errNoSqlDB, got: %s", err)
 	}
 
@@ -77,7 +77,7 @@ func TestRowsColumns(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+	if _, err := db.Exec(ctx, insertSQLStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
@@ -105,7 +105,7 @@ func TestRowsColumnsWithTimeout(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, insertSqlStatement, 42, nil, 12); err != nil {
+	if _, err := db.Exec(ctx, insertSQLStatement, 42, nil, 12); err != nil {
 		t.Fatalf("err while adding null item: %s", err.Error())
 	}
 
@@ -134,13 +134,13 @@ func TestRowsScanNextErr(t *testing.T) {
 	ensureNullableTable(t, db)
 	ctx := context.Background()
 
-	if _, err := db.Exec(ctx, deleteSqlStatement); err != nil {
+	if _, err := db.Exec(ctx, deleteSQLStatement); err != nil {
 		t.Fatalf("err while cleaning the database: %s", err.Error())
 	}
 
 	// prepare data set
 	for i := 1; i < 5; i++ {
-		if _, err := db.Exec(ctx, insertSqlStatement, i, nil, 42); err != nil {
+		if _, err := db.Exec(ctx, insertSQLStatement, i, nil, 42); err != nil {
 			t.Fatalf("err while adding null item: %s", err.Error())
 		}
 	}
@@ -152,13 +152,13 @@ func TestRowsScanNextErr(t *testing.T) {
 
 	var i int64 = 1
 	for rows.Next(ctx) {
-		var int64_val int64
-		if err := rows.Scan(ctx, &int64_val); err != nil {
+		var int64val int64
+		if err := rows.Scan(ctx, &int64val); err != nil {
 			t.Fatalf("expected nil, got: %s", err)
 		}
 
-		if int64_val != i {
-			t.Fatalf("expected int64_val to be same with %d, got: %d", i, int64_val)
+		if int64val != i {
+			t.Fatalf("expected int64val to be same with %d, got: %d", i, int64val)
 		}
 
 		i++
