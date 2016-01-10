@@ -67,25 +67,6 @@ func Open(driver, dsn string) (*DB, error) {
 	return db, nil
 }
 
-// Ping verifies a connection to the database is still alive, establishing a
-// connection if necessary.
-func (db *DB) Ping(ctx context.Context) error {
-	done := make(chan struct{}, 1)
-
-	var err error
-
-	f := func(sqldb *sql.DB) {
-		err = sqldb.Ping()
-		close(done)
-	}
-
-	if err := db.process(ctx, f, done); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // Begin starts a transaction. The isolation level is dependent on the driver.
 func (db *DB) Begin(ctx context.Context) (*Tx, error) {
 	done := make(chan struct{}, 1)
@@ -109,6 +90,33 @@ func (db *DB) Begin(ctx context.Context) (*Tx, error) {
 	}, nil
 }
 
+// Close closes the all connections
+func (db *DB) Close() error {
+	db.mu.Lock()
+	conns := db.conns
+	db.conns = nil
+	db.factory = nil
+
+	db.mu.Unlock()
+
+	if conns == nil {
+		return ErrClosed
+	}
+
+	close(conns)
+
+	for conn := range conns {
+		if conn == nil {
+			continue
+		}
+
+		if err := conn.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 // Exec executes a query without returning any rows. The args are for any
 // placeholder parameters in the query.
 func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
@@ -129,57 +137,23 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.
 	return res, err
 }
 
-// QueryRow executes a query that is expected to return at most one row.
-// QueryRow always return a non-nil value. Errors are deferred until Row's Scan
-// method is called.
-func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *Row {
-	done := make(chan struct{}, 0)
+// Ping verifies a connection to the database is still alive, establishing a
+// connection if necessary.
+func (db *DB) Ping(ctx context.Context) error {
+	done := make(chan struct{}, 1)
 
-	var res *sql.Row
+	var err error
 
 	f := func(sqldb *sql.DB) {
-		res = sqldb.QueryRow(query, args...)
+		err = sqldb.Ping()
 		close(done)
 	}
 
-	sqldb, err := db.handleWithSQL(ctx, f, done)
-	if err != nil {
-		return &Row{err: err}
+	if err := db.process(ctx, f, done); err != nil {
+		return err
 	}
 
-	return &Row{
-		row:   res,
-		sqldb: sqldb,
-		db:    db,
-	}
-}
-
-// Query executes a query that returns rows, typically a SELECT. The args are
-// for any placeholder parameters in the query.
-func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
-	done := make(chan struct{}, 0)
-	var res *sql.Rows
-	var queryErr error
-	f := func(sqldb *sql.DB) {
-		res, queryErr = sqldb.Query(query, args...)
-		close(done)
-	}
-
-	sqldb, err := db.handleWithSQL(ctx, f, done)
-	if err != nil {
-		return nil, err
-	}
-
-	if queryErr != nil {
-		return nil, queryErr
-	}
-
-	return &Rows{
-		rows:  res,
-		sqldb: sqldb,
-		db:    db,
-	}, nil
-
+	return nil
 }
 
 // Prepare creates a prepared statement for later queries or executions.
@@ -210,9 +184,58 @@ func (db *DB) Prepare(ctx context.Context, query string) (*Stmt, error) {
 		sqldb: sqldb,
 		db:    db,
 	}, nil
+}
+
+// Query executes a query that returns rows, typically a SELECT. The args are
+// for any placeholder parameters in the query.
+func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
+	done := make(chan struct{}, 0)
+	var res *sql.Rows
+	var queryErr error
+	f := func(sqldb *sql.DB) {
+		res, queryErr = sqldb.Query(query, args...)
+		close(done)
+	}
+
+	sqldb, err := db.handleWithSQL(ctx, f, done)
+	if err != nil {
+		return nil, err
+	}
+
+	if queryErr != nil {
+		return nil, queryErr
+	}
+
+	return &Rows{
+		rows:  res,
+		sqldb: sqldb,
+		db:    db,
+	}, nil
 
 }
 
+// QueryRow executes a query that is expected to return at most one row.
+// QueryRow always return a non-nil value. Errors are deferred until Row's Scan
+// method is called.
+func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *Row {
+	done := make(chan struct{}, 0)
+
+	var res *sql.Row
+
+	f := func(sqldb *sql.DB) {
+		res = sqldb.QueryRow(query, args...)
+		close(done)
+	}
+
+	sqldb, err := db.handleWithSQL(ctx, f, done)
+	if err != nil {
+		return &Row{err: err}
+	}
+
+	return &Row{
+		row:   res,
+		sqldb: sqldb,
+		db:    db,
 // process accepts context for deadlines, f for operation, and done channel for
 // signalling operation. At the end of the operation, puts db back to pool and
 // increments the sem
