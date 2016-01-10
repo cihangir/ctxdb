@@ -22,13 +22,6 @@ var (
 // 	db.confMu.Unlock()
 // }
 
-// SetMaxOpenConns sets the maximum number of open connections to the database.
-func (db *DB) SetMaxOpenConns(i int) {
-	db.mu.Lock()
-	db.maxOpenConns = i
-	db.mu.Unlock()
-}
-
 func (db *DB) getConns() chan *sql.DB {
 	db.mu.Lock()
 	conns := db.conns
@@ -74,32 +67,4 @@ func (db *DB) put(conn *sql.DB) error {
 		// pool is full, close passed connection
 		return conn.Close()
 	}
-}
-
-// Close closes the all connections
-func (db *DB) Close() error {
-	db.mu.Lock()
-	conns := db.conns
-	db.conns = nil
-	db.factory = nil
-
-	db.mu.Unlock()
-
-	if conns == nil {
-		return ErrClosed
-	}
-
-	close(conns)
-
-	for conn := range conns {
-		if conn == nil {
-			continue
-		}
-
-		if err := conn.Close(); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

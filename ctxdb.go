@@ -236,6 +236,29 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 		row:   res,
 		sqldb: sqldb,
 		db:    db,
+	}
+}
+
+// SetMaxIdleConns sets the maximum number of connections in the idle connection
+// pool.
+func (db *DB) SetMaxIdleConns(i int) {
+	panic("not fully implemented")
+}
+
+// SetMaxOpenConns sets the maximum number of open connections to the database.
+func (db *DB) SetMaxOpenConns(i int) {
+	db.mu.Lock()
+	db.maxOpenConns = i
+	db.mu.Unlock()
+
+	panic("not fully implemented")
+}
+
+// Stats returns database statistics.
+// func (db *DB) Stats() *sql.DBStats {
+// 	panic("not fully implemented")
+// }
+
 // process accepts context for deadlines, f for operation, and done channel for
 // signalling operation. At the end of the operation, puts db back to pool and
 // increments the sem
