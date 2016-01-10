@@ -271,7 +271,7 @@ func (db *DB) SetMaxOpenConns(i int) {
 	db.maxOpenConns = i
 	db.mu.Unlock()
 
-	panic("not fully implemented")
+	// panic("not fully implemented")
 }
 
 // process accepts context for deadlines, f for operation, and done channel for
