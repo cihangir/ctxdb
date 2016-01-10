@@ -2,6 +2,7 @@ package ctxdb
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"sync"
 
@@ -117,6 +118,25 @@ func (db *DB) Close() error {
 
 	return nil
 }
+
+// Driver returns the database's underlying driver.
+func (db *DB) Driver(ctx context.Context) driver.Driver {
+	done := make(chan struct{}, 1)
+
+	var res driver.Driver
+
+	f := func(sqldb *sql.DB) {
+		res = sqldb.Driver()
+		close(done)
+	}
+
+	if err := db.process(ctx, f, done); err != nil {
+		panic(err) //TODO(cihangir) panic is overkill
+	}
+
+	return res
+}
+
 // Exec executes a query without returning any rows. The args are for any
 // placeholder parameters in the query.
 func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
