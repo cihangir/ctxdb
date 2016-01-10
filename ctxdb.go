@@ -274,11 +274,6 @@ func (db *DB) SetMaxOpenConns(i int) {
 	panic("not fully implemented")
 }
 
-// Stats returns database statistics.
-// func (db *DB) Stats() *sql.DBStats {
-// 	panic("not fully implemented")
-// }
-
 // process accepts context for deadlines, f for operation, and done channel for
 // signalling operation. At the end of the operation, puts db back to pool and
 // increments the sem
