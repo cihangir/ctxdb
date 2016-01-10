@@ -2,10 +2,14 @@
 
 package ctxdb
 
-import "database/sql"
+import (
+	"database/sql"
+
+	"golang.org/x/net/context"
+)
 
 // Stats returns database statistics.
-func (db *DB) Stats() sql.DBStats {
+func (db *DB) Stats(ctx context.Context) sql.DBStats {
 	done := make(chan struct{}, 1)
 
 	var res sql.DBStats
